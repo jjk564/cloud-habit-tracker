@@ -107,17 +107,15 @@ def main(page: ft.Page):
                                   on_click=lambda e, h=habit: process_log(h, False)),
                 ])
 
-            # 3. Add the row to our list
+            # 3. Add the row to our top list
             log_list.controls.append(
                 ft.Row([
                     ft.Text(habit.title(), size=18, weight="bold", expand=True),
-                    status_ui  # <--- Our new dynamic UI component
+                    status_ui 
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             )
             
-            # Keep the report list calculation the same
-            report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
-            # Simple success rate calculation
+            # 4. Add the total completions to the bottom list (Now there is strictly only one!)
             report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
         
         update_dropdowns()

@@ -60,7 +60,12 @@ class HabitTracker:
         
         self.load_from_cloud()
         return f"Logged {habit_name} for today!"
-
+    
+    def undo_today(self, habit_name):
+        habit_name = habit_name.lower()
+        self.supabase.rpc('remove_date_from_habit', 
+                          {'h_name': habit_name, 'bad_date': self.today}).execute()
+        self.load_from_cloud()
 # ==========================================
 # 2. THE FLET FRONTEND
 # ==========================================
@@ -84,6 +89,32 @@ def main(page: ft.Page):
 
     log_list = ft.Column(spacing=10)
     report_list = ft.Column(spacing=5)
+    
+    # Keep track of habits skipped during this app session
+    skipped_habits = set()
+
+    def process_log(habit_name, status):
+        if status:
+            msg = tracker.log_today(habit_name, True)
+            if habit_name in skipped_habits:
+                skipped_habits.remove(habit_name)
+        else:
+            skipped_habits.add(habit_name)
+            msg = f"Skipped {habit_name.title()} for today."
+            
+        show_notification(msg)
+        update_dashboard()
+
+    def undo_log(habit_name):
+        if habit_name in skipped_habits:
+            skipped_habits.remove(habit_name)
+            msg = f"Undo skip for {habit_name.title()}."
+        else:
+            tracker.undo_today(habit_name)
+            msg = f"Removed completion for {habit_name.title()}."
+            
+        show_notification(msg)
+        update_dashboard()
 
     def update_dashboard():
         log_list.controls.clear()
@@ -93,12 +124,22 @@ def main(page: ft.Page):
             log_list.controls.append(ft.Text("No habits found in cloud.", italic=True))
 
         for habit, dates in tracker.my_habits.items():
-            # 1. Check if today's date is already in the database array
             is_done_today = tracker.today in dates
+            is_skipped_today = habit in skipped_habits
 
-            # 2. Build the buttons OR the success message based on status
+            # The new Dynamic UI Logic with the Pencil (EDIT) icon
             if is_done_today:
-                status_ui = ft.Text("Done for today! 🎉", color=ft.Colors.GREEN, weight="bold")
+                status_ui = ft.Row([
+                    ft.Text("Done for today! 🎉", color=ft.Colors.GREEN, weight="bold"),
+                    ft.IconButton(icon=ft.Icons.EDIT, tooltip="Edit Entry", 
+                                  on_click=lambda e, h=habit: undo_log(h))
+                ])
+            elif is_skipped_today:
+                status_ui = ft.Row([
+                    ft.Text("Skipped for today.", color=ft.Colors.GREY, italic=True),
+                    ft.IconButton(icon=ft.Icons.EDIT, tooltip="Edit Entry", 
+                                  on_click=lambda e, h=habit: undo_log(h))
+                ])
             else:
                 status_ui = ft.Row([
                     ft.IconButton(icon=ft.Icons.CHECK_CIRCLE, icon_color=ft.Colors.GREEN, 
@@ -107,7 +148,6 @@ def main(page: ft.Page):
                                   on_click=lambda e, h=habit: process_log(h, False)),
                 ])
 
-            # 3. Add the row to our top list
             log_list.controls.append(
                 ft.Row([
                     ft.Text(habit.title(), size=18, weight="bold", expand=True),
@@ -115,16 +155,10 @@ def main(page: ft.Page):
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             )
             
-            # 4. Add the total completions to the bottom list (Now there is strictly only one!)
             report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
         
         update_dropdowns()
         page.update()
-
-    def process_log(habit_name, status):
-        msg = tracker.log_today(habit_name, status)
-        show_notification(msg)
-        update_dashboard()
 
     # Settings UI Elements
     new_habit_input = ft.TextField(label="New Habit", expand=True)
@@ -159,7 +193,7 @@ def main(page: ft.Page):
     page.add(
         ft.Tabs(
             selected_index=0,
-            length=2,          # <--- The missing piece!
+            length=2,
             expand=True,
             content=ft.Column(
                 expand=True,

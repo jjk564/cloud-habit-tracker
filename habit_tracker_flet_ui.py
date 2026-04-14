@@ -74,8 +74,13 @@ def main(page: ft.Page):
     tracker = HabitTracker()
 
     def show_notification(message):
-        page.snack_bar = ft.SnackBar(ft.Text(message), open=True)
-        page.update()
+        try:
+            # The new way Flet handles popups
+            page.open(ft.SnackBar(ft.Text(message))) 
+        except AttributeError:
+            # The old way, just in case
+            page.snack_bar = ft.SnackBar(ft.Text(message), open=True)
+            page.update()
 
     log_list = ft.Column(spacing=10)
     report_list = ft.Column(spacing=5)
@@ -88,18 +93,30 @@ def main(page: ft.Page):
             log_list.controls.append(ft.Text("No habits found in cloud.", italic=True))
 
         for habit, dates in tracker.my_habits.items():
-            log_list.controls.append(
-                ft.Row([
-                    ft.Text(habit.title(), size=18, weight="bold", expand=True),
-                    
-                    # Updated to the new uppercase 'Icons' class!
+            # 1. Check if today's date is already in the database array
+            is_done_today = tracker.today in dates
+
+            # 2. Build the buttons OR the success message based on status
+            if is_done_today:
+                status_ui = ft.Text("Done for today! 🎉", color=ft.Colors.GREEN, weight="bold")
+            else:
+                status_ui = ft.Row([
                     ft.IconButton(icon=ft.Icons.CHECK_CIRCLE, icon_color=ft.Colors.GREEN, 
                                   on_click=lambda e, h=habit: process_log(h, True)),
                     ft.IconButton(icon=ft.Icons.CANCEL, icon_color=ft.Colors.RED, 
                                   on_click=lambda e, h=habit: process_log(h, False)),
-                                  
+                ])
+
+            # 3. Add the row to our list
+            log_list.controls.append(
+                ft.Row([
+                    ft.Text(habit.title(), size=18, weight="bold", expand=True),
+                    status_ui  # <--- Our new dynamic UI component
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             )
+            
+            # Keep the report list calculation the same
+            report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
             # Simple success rate calculation
             report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
         

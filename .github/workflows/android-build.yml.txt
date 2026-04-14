@@ -1,0 +1,43 @@
+name: Build Android APK
+
+# Tell the robot to run every time you push code to 'main'
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Also adds a manual "Run" button on GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java (Required for Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter (The engine behind Flet)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Flet Build Tools
+        run: pip install flet
+
+      - name: Build the APK!
+        run: flet build apk
+
+      - name: Upload the finished APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HabitTracker-Android-App
+          path: build/apk/**/*.apk

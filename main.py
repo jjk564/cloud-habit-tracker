@@ -1,5 +1,6 @@
 import os
 import datetime
+import calendar    # <--- Our new built-in math tool
 import flet as ft
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -66,6 +67,7 @@ class HabitTracker:
         self.supabase.rpc('remove_date_from_habit', 
                           {'h_name': habit_name, 'bad_date': self.today}).execute()
         self.load_from_cloud()
+
 # ==========================================
 # 2. THE FLET FRONTEND
 # ==========================================
@@ -80,17 +82,14 @@ def main(page: ft.Page):
 
     def show_notification(message):
         try:
-            # The new way Flet handles popups
             page.open(ft.SnackBar(ft.Text(message))) 
         except AttributeError:
-            # The old way, just in case
             page.snack_bar = ft.SnackBar(ft.Text(message), open=True)
             page.update()
 
     log_list = ft.Column(spacing=10)
     report_list = ft.Column(spacing=5)
     
-    # Keep track of habits skipped during this app session
     skipped_habits = set()
 
     def process_log(habit_name, status):
@@ -127,7 +126,6 @@ def main(page: ft.Page):
             is_done_today = tracker.today in dates
             is_skipped_today = habit in skipped_habits
 
-            # The new Dynamic UI Logic with the Pencil (EDIT) icon
             if is_done_today:
                 status_ui = ft.Row([
                     ft.Text("Done for today! 🎉", color=ft.Colors.GREEN, weight="bold"),
@@ -158,29 +156,114 @@ def main(page: ft.Page):
             report_list.controls.append(ft.Text(f"• {habit.title()}: {len(dates)} total completions"))
         
         update_dropdowns()
+        update_calendar() # Refresh the calendar when data changes
         page.update()
 
-    # Settings UI Elements
+   # --- NEW CALENDAR LOGIC ---
+    calendar_container = ft.Column(spacing=10)
+    
+    # Updated 'on_change' to 'on_select' to satisfy the newest Flet version!
+    cal_habit_dropdown = ft.Dropdown(label="Select Habit to View", expand=True, on_select=lambda e: update_calendar())
+
+    def update_calendar():
+        calendar_container.controls.clear()
+        
+        if not cal_habit_dropdown.value or cal_habit_dropdown.value not in tracker.my_habits:
+            calendar_container.controls.append(ft.Text("Select a habit from the dropdown to view your monthly streak.", italic=True))
+            page.update()
+            return
+
+        selected_habit = cal_habit_dropdown.value
+        completed_dates = tracker.my_habits[selected_habit]
+
+        now = datetime.date.today()
+        current_year = now.year
+        current_month = now.month
+        month_name = calendar.month_name[current_month]
+
+        # 1. Add Month Header (Bypassing Flet Enum with pure string "center")
+        calendar_container.controls.append(
+            ft.Text(f"{month_name} {current_year}", size=20, weight="bold", text_align="center")
+        )
+
+        # 2. Add Days of the Week Header (Bypassing Flet Enum with pure string "spaceBetween")
+        days_row = ft.Row(alignment="spaceBetween")
+        for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
+             days_row.controls.append(
+                 ft.Container(content=ft.Text(day, weight="bold", size=12, text_align="center"), width=40)
+             )
+        calendar_container.controls.append(days_row)
+        calendar_container.controls.append(ft.Divider())
+
+        # 3. Build the Grid
+        month_cal = calendar.monthcalendar(current_year, current_month)
+        for week in month_cal:
+            # Bypassing Flet Enum again
+            week_row = ft.Row(alignment="spaceBetween")
+            for day in week:
+                if day == 0: # Empty days before the 1st of the month
+                    week_row.controls.append(ft.Container(width=40, height=40))
+                else:
+                    # Format day to match Supabase layout (YYYY-MM-DD)
+                    date_str = f"{current_year}-{current_month:02d}-{day:02d}"
+                    is_completed = date_str in completed_dates
+
+                    # Visuals: Bypassing Flet Color Enums with pure strings
+                    bg_color = "green" if is_completed else "#333333"
+                    
+                    day_box = ft.Container(
+                        content=ft.Text(str(day), text_align="center"),
+                        width=40,
+                        height=40,
+                        bgcolor=bg_color,
+                        border_radius=5
+                    )
+                    week_row.controls.append(day_box)
+            calendar_container.controls.append(week_row)
+            
+        # Push the new UI elements to the screen!
+        page.update()
+
+    # --- SETTINGS / MANAGE LOGIC ---
     new_habit_input = ft.TextField(label="New Habit", expand=True)
     remove_dropdown = ft.Dropdown(label="Remove Habit", expand=True)
 
     def update_dropdowns():
-        remove_dropdown.options = [ft.dropdown.Option(h.title()) for h in tracker.my_habits.keys()]
+        # Explicitly defining 'key' and 'text' fixes the collision!
+        options = [ft.dropdown.Option(key=h, text=h.title()) for h in tracker.my_habits.keys()]
+        
+        remove_dropdown.options = options
+        
+        # Keep calendar dropdown selection if it still exists
+        current_selection = cal_habit_dropdown.value
+        cal_habit_dropdown.options = options
+        if current_selection not in tracker.my_habits:
+            cal_habit_dropdown.value = None
 
     def ui_add(e):
         show_notification(tracker.add_habit(new_habit_input.value))
         new_habit_input.value = ""
+        cal_habit_dropdown.value = new_habit_input.value.lower() # Auto-select the new habit
         update_dashboard()
 
     def ui_remove(e):
         if remove_dropdown.value:
             show_notification(tracker.remove_habit(remove_dropdown.value))
+            remove_dropdown.value = None
             update_dashboard()
 
-    # Layout
+    # --- LAYOUTS ---
     dashboard_view = ft.Container(padding=20, content=ft.Column([
         ft.Text("Cloud Dashboard", size=22, weight="bold"),
         ft.Divider(), log_list, ft.Divider(), report_list
+    ], scroll=ft.ScrollMode.AUTO))
+
+    # New Calendar View
+    calendar_view = ft.Container(padding=20, content=ft.Column([
+        ft.Text("Progress Calendar", size=22, weight="bold"),
+        cal_habit_dropdown,
+        ft.Divider(), 
+        calendar_container
     ], scroll=ft.ScrollMode.AUTO))
 
     manage_view = ft.Container(padding=20, content=ft.Column([
@@ -189,25 +272,27 @@ def main(page: ft.Page):
         ft.Row([remove_dropdown, ft.Button("Remove", on_click=ui_remove, color="red")]),
     ], scroll=ft.ScrollMode.AUTO))
 
-    # The Modern Flet Tabbar Layout
+    # The Modern Flet Tabbar Layout (Now with 3 tabs!)
     page.add(
         ft.Tabs(
             selected_index=0,
-            length=2,
+            length=3,
             expand=True,
             content=ft.Column(
                 expand=True,
                 controls=[
                     ft.TabBar(
                         tabs=[
-                            ft.Tab(label="Dashboard", icon="dashboard"),
-                            ft.Tab(label="Manage", icon="settings")
+                            ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
+                            ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
+                            ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
                         ]
                     ),
                     ft.TabBarView(
                         expand=True,
                         controls=[
                             dashboard_view,
+                            calendar_view,
                             manage_view
                         ]
                     )

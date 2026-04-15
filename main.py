@@ -30,6 +30,27 @@ class HabitTracker:
         # Grab both completions AND skips from the database
         self.my_habits = {row['habit_name']: row.get('completed_dates') or [] for row in response.data}
         self.my_skipped = {row['habit_name']: row.get('skipped_dates') or [] for row in response.data}
+    
+    def register(self, email, password):
+        try:
+            self.supabase.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+            return "Registration successful! You can now log in."
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    def login(self, email, password):
+        try:
+            self.supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            self.load_from_cloud() # Download this specific user's habits!
+            return True, "Login successful!"
+        except Exception as e:
+            return False, f"Login failed. Check your password."
 
     def _time_cop(self):
         """Cloud version: Compares last entry date to today."""
@@ -80,7 +101,7 @@ class HabitTracker:
 # 2. THE FLET FRONTEND
 # ==========================================
 def main(page: ft.Page):
-    page.title = "Cloud Habit Tracker"
+    page.title = "Habit Helper"
     page.theme_mode = ft.ThemeMode.DARK
     page.window_width = 400
     page.window_height = 800
@@ -277,39 +298,91 @@ def main(page: ft.Page):
         ft.Row([remove_dropdown, ft.Button("Remove", on_click=ui_remove, color="red")]),
     ], scroll=ft.ScrollMode.AUTO))
 
-# The Modern Flet Tabbar Layout (Now with 3 tabs!)
-    page.add(
-        ft.SafeArea(
-            expand=True,
-            content=ft.Tabs(
-                selected_index=0,
-                length=3,
-                expand=True,
-                content=ft.Column(
-                    expand=True,
-                    controls=[
-                        ft.TabBar(
-                            tabs=[
-                                ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
-                                ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
-                                ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
-                            ]
-                        ),
-                        ft.TabBarView(
-                            expand=True,
-                            controls=[
-                                dashboard_view,
-                                calendar_view,
-                                manage_view
-                            ]
-                        )
-                    ]
-                )
+# --- AUTHENTICATION UI ---
+    email_input = ft.TextField(label="Email", width=300)
+    password_input = ft.TextField(label="Password", password=True, can_reveal_password=True, width=300)
+
+    def handle_login(e):
+        print("--- LOGIN BUTTON CLICKED ---")
+        print(f"Attempting login for: {email_input.value}")
+        
+        success, msg = tracker.login(email_input.value, password_input.value)
+        
+        print(f"Supabase responded with: {msg}")
+        show_notification(msg)
+        if success:
+            print("Login successful, drawing dashboard...")
+            show_dashboard() 
+        page.update()
+
+    def handle_register(e):
+        print("--- REGISTER BUTTON CLICKED ---")
+        print(f"Attempting to register: {email_input.value}")
+        
+        msg = tracker.register(email_input.value, password_input.value)
+        
+        print(f"Supabase responded with: {msg}")
+        show_notification(msg)
+        page.update()
+
+    login_view = ft.SafeArea(
+        expand=True,
+        content=ft.Container(
+            alignment=ft.Alignment.CENTER, # <-- Capital 'A', Capital 'CENTER'!
+            content=ft.Column(
+                [
+                    ft.Icon(ft.Icons.LOCK_OUTLINE, size=50),
+                    ft.Text("Habit Helper", size=30, weight="bold"),
+                    email_input,
+                    password_input,
+                    ft.ElevatedButton("Login", on_click=handle_login, width=300),
+                    ft.TextButton("Create Account", on_click=handle_register)
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
             )
         )
     )
-    
-    update_dashboard()
+
+    def show_dashboard():
+        page.controls.clear() # Wipe the login screen away
+        
+        # The Modern Flet Tabbar Layout (Now with 3 tabs!)
+        page.add(
+            ft.SafeArea(
+                expand=True,
+                content=ft.Tabs(
+                    selected_index=0,
+                    length=3,
+                    expand=True,
+                    content=ft.Column(
+                        expand=True,
+                        controls=[
+                            ft.TabBar(
+                                tabs=[
+                                    ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
+                                    ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
+                                    ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
+                                ]
+                            ),
+                            ft.TabBarView(
+                                expand=True,
+                                controls=[
+                                    dashboard_view,
+                                    calendar_view,
+                                    manage_view
+                                ]
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+        
+        update_dashboard()
+
+    # --- START THE APP ON THE LOGIN SCREEN ---
+    page.add(login_view)
 
 if __name__ == "__main__":
     ft.run(main)

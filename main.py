@@ -21,13 +21,15 @@ class HabitTracker:
         self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         self.today = str(datetime.date.today())
         self.my_habits = {}
+        self.my_skipped = {} # NEW: Dictionary to hold cloud skips
         self.load_from_cloud()
 
     def load_from_cloud(self):
         """Fetches all habits from Supabase."""
         response = self.supabase.table("habits").select("*").execute()
-        # Convert list of rows into a dictionary for our UI
-        self.my_habits = {row['habit_name']: row['completed_dates'] for row in response.data}
+        # Grab both completions AND skips from the database
+        self.my_habits = {row['habit_name']: row.get('completed_dates') or [] for row in response.data}
+        self.my_skipped = {row['habit_name']: row.get('skipped_dates') or [] for row in response.data}
 
     def _time_cop(self):
         """Cloud version: Compares last entry date to today."""
@@ -55,12 +57,18 @@ class HabitTracker:
     def log_today(self, habit_name, completed: bool):
         habit_name = habit_name.lower()
         if completed:
-            # SQL Logic: Add today's date to the array IF it's not already there
+            # Add to the completed array
             self.supabase.rpc('add_date_to_habit', 
                               {'h_name': habit_name, 'new_date': self.today}).execute()
+            msg = f"Logged {habit_name} for today!"
+        else:
+            # NEW: Add to the skipped array using your new SQL function!
+            self.supabase.rpc('add_skip_date_to_habit', 
+                              {'h_name': habit_name, 'skip_date': self.today}).execute()
+            msg = f"Skipped {habit_name} for today."
         
-        self.load_from_cloud()
-        return f"Logged {habit_name} for today!"
+        self.load_from_cloud() # Refresh local data with the new cloud state
+        return msg
     
     def undo_today(self, habit_name):
         habit_name = habit_name.lower()
@@ -93,14 +101,9 @@ def main(page: ft.Page):
     skipped_habits = set()
 
     def process_log(habit_name, status):
-        if status:
-            msg = tracker.log_today(habit_name, True)
-            if habit_name in skipped_habits:
-                skipped_habits.remove(habit_name)
-        else:
-            skipped_habits.add(habit_name)
-            msg = f"Skipped {habit_name.title()} for today."
-            
+        # Pass the True/False status straight to the cloud backend
+        msg = tracker.log_today(habit_name, status)
+        
         show_notification(msg)
         update_dashboard()
 
@@ -124,7 +127,9 @@ def main(page: ft.Page):
 
         for habit, dates in tracker.my_habits.items():
             is_done_today = tracker.today in dates
-            is_skipped_today = habit in skipped_habits
+            
+            # THE CHANGED LINE: Now reading from the cloud dictionary!
+            is_skipped_today = tracker.today in tracker.my_skipped.get(habit, [])
 
             if is_done_today:
                 status_ui = ft.Row([
@@ -272,31 +277,34 @@ def main(page: ft.Page):
         ft.Row([remove_dropdown, ft.Button("Remove", on_click=ui_remove, color="red")]),
     ], scroll=ft.ScrollMode.AUTO))
 
-    # The Modern Flet Tabbar Layout (Now with 3 tabs!)
+# The Modern Flet Tabbar Layout (Now with 3 tabs!)
     page.add(
-        ft.Tabs(
-            selected_index=0,
-            length=3,
+        ft.SafeArea(
             expand=True,
-            content=ft.Column(
+            content=ft.Tabs(
+                selected_index=0,
+                length=3,
                 expand=True,
-                controls=[
-                    ft.TabBar(
-                        tabs=[
-                            ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
-                            ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
-                            ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
-                        ]
-                    ),
-                    ft.TabBarView(
-                        expand=True,
-                        controls=[
-                            dashboard_view,
-                            calendar_view,
-                            manage_view
-                        ]
-                    )
-                ]
+                content=ft.Column(
+                    expand=True,
+                    controls=[
+                        ft.TabBar(
+                            tabs=[
+                                ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
+                                ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
+                                ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
+                            ]
+                        ),
+                        ft.TabBarView(
+                            expand=True,
+                            controls=[
+                                dashboard_view,
+                                calendar_view,
+                                manage_view
+                            ]
+                        )
+                    ]
+                )
             )
         )
     )

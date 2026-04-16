@@ -6,6 +6,10 @@ on:
     branches: [ main ]
   workflow_dispatch: # Also adds a manual "Run" button on GitHub
 
+# Give the robot security clearance to create an official Release
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,8 +40,17 @@ jobs:
       - name: Build the APK!
         run: flet build apk
 
+      # Keeps the temporary zip file just in case you need a backup
       - name: Upload the finished APK
         uses: actions/upload-artifact@v4
         with:
           name: HabitTracker-Android-App
           path: build/apk/**/*.apk
+
+      # THE NEW OBTAINIUM PIPELINE
+      - name: Publish Official GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Tabit Build ${{ github.run_number }}
+          files: build/apk/**/*.apk

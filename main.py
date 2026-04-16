@@ -52,6 +52,13 @@ class HabitTracker:
         except Exception as e:
             return False, f"Login failed. Check your password."
 
+    def logout(self):
+        # Tell the cloud to kill the session
+        self.supabase.auth.sign_out()
+        # Wipe the local dictionaries so no data is left behind
+        self.my_habits.clear()
+        self.my_skipped.clear()
+
     def _time_cop(self):
         """Cloud version: Compares last entry date to today."""
         # For a simple version, we'll keep this logic local-first 
@@ -292,10 +299,20 @@ def main(page: ft.Page):
         calendar_container
     ], scroll=ft.ScrollMode.AUTO))
 
+    # 1. Define the function first
+    def handle_logout(e):
+        tracker.logout()
+        page.controls.clear()
+        page.add(login_view)
+        page.update()
+        show_notification("Successfully logged out!")
+
+    # 2. Then build the UI that uses it
     manage_view = ft.Container(padding=20, content=ft.Column([
         ft.Text("Manage Habits", size=22, weight="bold"),
         ft.Row([new_habit_input, ft.Button("Add", on_click=ui_add)]),
         ft.Row([remove_dropdown, ft.Button("Remove", on_click=ui_remove, color="red")]),
+        ft.ElevatedButton("Logout", icon=ft.Icons.LOGOUT, color="red", on_click=handle_logout)
     ], scroll=ft.ScrollMode.AUTO))
 
 # --- AUTHENTICATION UI ---

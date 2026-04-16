@@ -108,7 +108,7 @@ class HabitTracker:
 # 2. THE FLET FRONTEND
 # ==========================================
 def main(page: ft.Page):
-    page.title = "Habit Helper"
+    page.title = "Tabit"
     page.theme_mode = ft.ThemeMode.DARK
     page.window_width = 400
     page.window_height = 800
@@ -287,7 +287,7 @@ def main(page: ft.Page):
 
     # --- LAYOUTS ---
     dashboard_view = ft.Container(padding=20, content=ft.Column([
-        ft.Text("Cloud Dashboard", size=22, weight="bold"),
+        ft.Text("Tabit Dashboard", size=22, weight="bold"),
         ft.Divider(), log_list, ft.Divider(), report_list
     ], scroll=ft.ScrollMode.AUTO))
 
@@ -349,7 +349,7 @@ def main(page: ft.Page):
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.LOCK_OUTLINE, size=50),
-                    ft.Text("Habit Helper", size=30, weight="bold"),
+                    ft.Text("Tabit", size=30, weight="bold"),
                     email_input,
                     password_input,
                     ft.ElevatedButton("Login", on_click=handle_login, width=300),

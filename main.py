@@ -110,9 +110,30 @@ class HabitTracker:
 def main(page: ft.Page):
     page.title = "Tabit"
     page.theme_mode = ft.ThemeMode.DARK
-    page.window_width = 400
-    page.window_height = 800
     
+    # 1. Check the phone's storage for a saved token
+    saved_token = page.client_storage.get("tabit_refresh_token")
+    
+    if saved_token:
+        try:
+            # 2. Try to silently refresh the session
+            supabase.auth.refresh_session(saved_token)
+            
+            # 3. LOAD HABITS HERE (e.g., tracker.load_habits()) so the UI isn't empty!
+            
+            # 4. Skip the login screen completely
+            page.add(manage_view) 
+            
+        except Exception:
+            # If the token is expired/invalid, wipe it and force a normal login
+            page.client_storage.remove("tabit_refresh_token")
+            page.add(login_view)
+    else:
+        # First time opening the app
+        page.add(login_view)
+        
+    page.update()
+   
     # Initialize Tracker
     tracker = HabitTracker()
 
@@ -301,7 +322,12 @@ def main(page: ft.Page):
 
     # 1. Define the function first
     def handle_logout(e):
-        tracker.logout()
+        # Tell Supabase to invalidate the session
+        supabase.auth.sign_out()
+        
+        # ADD THIS LINE: Shred the saved token on the phone
+        page.client_storage.remove("tabit_refresh_token")
+        
         page.controls.clear()
         page.add(login_view)
         page.update()
@@ -321,16 +347,25 @@ def main(page: ft.Page):
 
     def handle_login(e):
         print("--- LOGIN BUTTON CLICKED ---")
-        print(f"Attempting login for: {email_input.value}")
         
+        # 1. Let your tracker handle the actual login
         success, msg = tracker.login(email_input.value, password_input.value)
-        
-        print(f"Supabase responded with: {msg}")
-        show_notification(msg)
+
         if success:
-            print("Login successful, drawing dashboard...")
-            show_dashboard() 
-        page.update()
+            # 2. Grab the session badge that Supabase just created
+            current_session = supabase.auth.get_session()
+            
+            # 3. Save it to the phone!
+            if current_session:
+                page.client_storage.set("tabit_refresh_token", current_session.refresh_token)
+            
+            # 4. Move to the main app screen
+            page.controls.clear()
+            page.add(manage_view)
+            page.update()
+        else:
+            # Show an error if they typed the wrong password
+            print(f"Login Failed: {msg}")
 
     def handle_register(e):
         print("--- REGISTER BUTTON CLICKED ---")

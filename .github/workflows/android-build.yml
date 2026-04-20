@@ -38,7 +38,7 @@ jobs:
         run: pip install flet
 
       - name: Build the APK!
-        run: flet build apk
+        run: flet build apk --project "tabit" --product "Tabit" --org "com.jjk564"
 
       # Keeps the temporary zip file just in case you need a backup
       - name: Upload the finished APK

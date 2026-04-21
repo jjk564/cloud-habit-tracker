@@ -18,8 +18,8 @@ class HabitTracker:
         self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         self.today = str(datetime.date.today())
         self.my_habits = {}
-        self.my_skipped = {} # NEW: Dictionary to hold cloud skips
-        self.load_from_cloud()
+        self.my_skipped = {}
+        # REMOVED: self.load_from_cloud()
 
     def load_from_cloud(self):
         """Fetches all habits from Supabase."""
@@ -300,10 +300,9 @@ def main(page: ft.Page):
 
     # 1. Define the function first
     def handle_logout(e):
-        # Tell Supabase to invalidate the session
-        supabase.auth.sign_out()
+        # FIX: Point to the tracker's supabase connection!
+        tracker.supabase.auth.sign_out()
         
-        # ADD THIS LINE: Shred the saved token on the phone
         page.client_storage.remove("tabit_refresh_token")
         
         page.controls.clear()
@@ -401,16 +400,18 @@ def main(page: ft.Page):
         
         update_dashboard()
 
-    # --- THE STARTUP CHECK (Moved to the bottom!) ---
+   # --- THE STARTUP CHECK ---
     saved_token = page.client_storage.get("tabit_refresh_token")
     
     if saved_token:
         try:
-            # FIX 3: Ask the tracker to refresh the session
             response = tracker.supabase.auth.refresh_session(saved_token)
             page.client_storage.set("tabit_refresh_token", response.session.refresh_token)
             
-            show_dashboard() # FIX 4: Load the full tabbed dashboard!
+            # ADD THIS LINE: Now that we are verified, download the data!
+            tracker.load_from_cloud()
+            
+            show_dashboard() 
             show_notification("Silently logged in!")
             
         except Exception as err:

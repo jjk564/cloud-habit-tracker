@@ -347,10 +347,10 @@ def main(page: ft.Page):
     login_view = ft.SafeArea(
         expand=True,
         content=ft.Container(
-            alignment=ft.Alignment.CENTER, # <-- Capital 'A', Capital 'CENTER'!
+            alignment=ft.alignment.center, # <-- FIXED: Lowercase 'alignment'
             content=ft.Column(
                 [
-                    ft.Icon(ft.Icons.LOCK_OUTLINE, size=50),
+                    ft.Icon(ft.icons.LOCK_OUTLINE, size=50), # <-- FIXED: Lowercase 'icons'
                     ft.Text("Tabit", size=30, weight="bold"),
                     email_input,
                     password_input,
@@ -366,34 +366,18 @@ def main(page: ft.Page):
     def show_dashboard():
         page.controls.clear() # Wipe the login screen away
         
-        # The Modern Flet Tabbar Layout (Now with 3 tabs!)
+        # The Modern Flet Tabbar Layout
         page.add(
             ft.SafeArea(
                 expand=True,
                 content=ft.Tabs(
                     selected_index=0,
-                    length=3,
                     expand=True,
-                    content=ft.Column(
-                        expand=True,
-                        controls=[
-                            ft.TabBar(
-                                tabs=[
-                                    ft.Tab(label="Dashboard", icon=ft.Icons.DASHBOARD),
-                                    ft.Tab(label="Calendar", icon=ft.Icons.CALENDAR_MONTH),
-                                    ft.Tab(label="Manage", icon=ft.Icons.SETTINGS)
-                                ]
-                            ),
-                            ft.TabBarView(
-                                expand=True,
-                                controls=[
-                                    dashboard_view,
-                                    calendar_view,
-                                    manage_view
-                                ]
-                            )
-                        ]
-                    )
+                    tabs=[
+                        ft.Tab(text="Dashboard", icon=ft.icons.DASHBOARD, content=dashboard_view),
+                        ft.Tab(text="Calendar", icon=ft.icons.CALENDAR_MONTH, content=calendar_view),
+                        ft.Tab(text="Manage", icon=ft.icons.SETTINGS, content=manage_view)
+                    ]
                 )
             )
         )
@@ -401,27 +385,29 @@ def main(page: ft.Page):
         update_dashboard()
 
    # --- THE STARTUP CHECK ---
-    saved_token = page.client_storage.get("tabit_refresh_token")
-    
-    if saved_token:
-        try:
+    try:
+        saved_token = page.client_storage.get("tabit_refresh_token")
+        
+        if saved_token:
             response = tracker.supabase.auth.refresh_session(saved_token)
             page.client_storage.set("tabit_refresh_token", response.session.refresh_token)
             
-            # ADD THIS LINE: Now that we are verified, download the data!
             tracker.load_from_cloud()
-            
             show_dashboard() 
             show_notification("Silently logged in!")
-            
-        except Exception as err:
-            page.client_storage.remove("tabit_refresh_token")
+        else:
             page.add(login_view)
-            show_notification("Session expired. Please log in again.")
-    else:
-        page.add(login_view)
-        
-    page.update()
+            
+        page.update()
+
+    except Exception as err:
+        # THE SAFETY NET: If anything crashes, print it to the screen!
+        import traceback
+        page.controls.clear()
+        page.add(ft.Text("FATAL ERROR", size=25, color="red", weight="bold"))
+        page.add(ft.Text(str(err), color="red"))
+        page.add(ft.Text(traceback.format_exc(), size=10))
+        page.update()
 
 if __name__ == "__main__":
     ft.run(main)

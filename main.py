@@ -19,7 +19,6 @@ class HabitTracker:
         self.today = str(datetime.date.today())
         self.my_habits = {}
         self.my_skipped = {}
-        # REMOVED: self.load_from_cloud()
 
     def load_from_cloud(self):
         """Fetches all habits from Supabase."""
@@ -385,29 +384,28 @@ def main(page: ft.Page):
         update_dashboard()
 
    # --- THE STARTUP CHECK ---
-    try:
-        saved_token = page.client_storage.get("tabit_refresh_token")
-        
-        if saved_token:
+    saved_token = page.client_storage.get("tabit_refresh_token")
+    
+    if saved_token:
+        try:
+            # 1. Silently get the new badge
             response = tracker.supabase.auth.refresh_session(saved_token)
             page.client_storage.set("tabit_refresh_token", response.session.refresh_token)
             
+            # 2. NOW we are allowed to ask the cloud for data!
             tracker.load_from_cloud()
+            
             show_dashboard() 
             show_notification("Silently logged in!")
-        else:
-            page.add(login_view)
             
-        page.update()
-
-    except Exception as err:
-        # THE SAFETY NET: If anything crashes, print it to the screen!
-        import traceback
-        page.controls.clear()
-        page.add(ft.Text("FATAL ERROR", size=25, color="red", weight="bold"))
-        page.add(ft.Text(str(err), color="red"))
-        page.add(ft.Text(traceback.format_exc(), size=10))
-        page.update()
+        except Exception as err:
+            page.client_storage.remove("tabit_refresh_token")
+            page.add(login_view)
+            show_notification("Session expired. Please log in again.")
+    else:
+        page.add(login_view)
+        
+    page.update()
 
 if __name__ == "__main__":
     ft.run(main)

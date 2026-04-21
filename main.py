@@ -4,8 +4,6 @@ import calendar    # <--- Our new built-in math tool
 import flet as ft
 from supabase import create_client, Client
 
-# Load the hidden keys from the .env file
-load_dotenv()
 # ==========================================
 # CONFIGURATION - PASTE YOUR KEYS HERE
 # ==========================================

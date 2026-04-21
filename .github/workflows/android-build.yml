@@ -5,6 +5,15 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch: # Also adds a manual "Run" button on GitHub
+    inputs:
+      build_type:
+        description: 'Build type — debug is faster for testing (~3 min vs ~8 min)'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
 
 # Give the robot security clearance to create an official Release
 permissions:
@@ -13,6 +22,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      # Pin NDK to avoid Gradle re-downloading a different version each run.
+      # If the build complains about NDK, update this to the version it wants.
+      ANDROID_NDK_VERSION: '27.2.12479018'
 
     steps:
       - name: Checkout code
@@ -28,17 +42,48 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true  # Caches the Flutter SDK + pub-cache between runs
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.sha }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            gradle-${{ runner.os }}-
+
+      - name: Pin Android NDK
+        run: |
+          if [ ! -d "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" ]; then
+            echo "Installing NDK $ANDROID_NDK_VERSION..."
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION" > /dev/null
+          else
+            echo "NDK $ANDROID_NDK_VERSION already installed."
+          fi
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'  # Caches pip packages between runs
 
       - name: Install Flet Build Tools
-        run: pip install flet
+        run: pip install -r requirements.txt
 
       - name: Build the APK!
-        run: flet build apk --project "tabit" --product "Tabit" --org "com.jjk564"
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'release' }}"
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            echo "Building DEBUG APK (faster, no AOT)..."
+            flet build apk --project "tabit" --product "Tabit" --org "com.jjk564" --flutter-build-args="--debug" --yes
+          else
+            echo "Building RELEASE APK..."
+            flet build apk --project "tabit" --product "Tabit" --org "com.jjk564" --yes
+          fi
 
       # Keeps the temporary zip file just in case you need a backup
       - name: Upload the finished APK
@@ -47,8 +92,9 @@ jobs:
           name: HabitTracker-Android-App
           path: build/apk/**/*.apk
 
-      # THE NEW OBTAINIUM PIPELINE
+      # THE NEW OBTAINIUM PIPELINE — only publish releases, not debug builds
       - name: Publish Official GitHub Release
+        if: ${{ github.event.inputs.build_type != 'debug' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}

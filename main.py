@@ -43,12 +43,16 @@ class HabitTracker:
 
     def login(self, email, password):
         try:
-            self.supabase.auth.sign_in_with_password({
+            # Capture the response from Supabase!
+            response = self.supabase.auth.sign_in_with_password({
                 "email": email,
                 "password": password
             })
-            self.load_from_cloud() # Download this specific user's habits!
-            return True, "Login successful!"
+            self.load_from_cloud()
+            
+            # Return True AND the actual token!
+            return True, response.session.refresh_token
+            
         except Exception as e:
             return False, f"Login failed. Check your password."
 
@@ -323,21 +327,16 @@ def main(page: ft.Page):
     password_input = ft.TextField(label="Password", password=True, can_reveal_password=True, width=300)
 
     def handle_login(e):
-        print("--- LOGIN BUTTON CLICKED ---")
-        success, msg = tracker.login(email_input.value, password_input.value)
+        # 'result' will either be the token (if success) or an error message (if fail)
+        success, result = tracker.login(email_input.value, password_input.value)
 
         if success:
-            # FIX 1: Ask the tracker for the session!
-            current_session = tracker.supabase.auth.get_session() 
-            
-            if current_session:
-                page.client_storage.set("tabit_refresh_token", current_session.refresh_token)
-                show_dashboard()  # FIX 2: Load the full tabbed dashboard!
-                show_notification("Login successful! Token saved to phone.") 
-            else:
-                show_notification("BUG: Session is None! Token was not saved.")
+            # Save the token straight to the phone!
+            page.client_storage.set("tabit_refresh_token", result)
+            show_dashboard() 
+            show_notification("Login successful! Token saved to phone.") 
         else:
-            show_notification(f"Login Failed: {msg}")
+            show_notification(result)
 
     def handle_register(e):
         print("--- REGISTER BUTTON CLICKED ---")

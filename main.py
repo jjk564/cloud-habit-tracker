@@ -110,31 +110,6 @@ class HabitTracker:
 def main(page: ft.Page):
     page.title = "Tabit"
     page.theme_mode = ft.ThemeMode.DARK
-    
-    saved_token = page.client_storage.get("tabit_refresh_token")
-    
-    if saved_token:
-        try:
-            # Try to silently refresh the session
-            response = supabase.auth.refresh_session(saved_token)
-            
-            # FIX 2: THE BURNER BADGE RULE! Save the NEW token immediately!
-            page.client_storage.set("tabit_refresh_token", response.session.refresh_token)
-            
-            # Success Pop-up!
-            show_notification("Silently logged in!")
-            page.add(manage_view) 
-            
-        except Exception as err:
-            # If the token is burned or expired, wipe it
-            page.client_storage.remove("tabit_refresh_token")
-            show_notification("Session expired. Please log in again.")
-            page.add(login_view)
-    else:
-        # No token found at all
-        page.add(login_view)
-        
-    page.update()
    
     # Initialize Tracker
     tracker = HabitTracker()
@@ -352,21 +327,15 @@ def main(page: ft.Page):
         success, msg = tracker.login(email_input.value, password_input.value)
 
         if success:
-            # FIX 1: Make sure we ask the correct Supabase client for the session!
-            # If your connection lives inside your tracker, you must use tracker.supabase
-            current_session = supabase.auth.get_session() 
+            # FIX 1: Ask the tracker for the session!
+            current_session = tracker.supabase.auth.get_session() 
             
             if current_session:
                 page.client_storage.set("tabit_refresh_token", current_session.refresh_token)
-                # Success Pop-up!
+                show_dashboard()  # FIX 2: Load the full tabbed dashboard!
                 show_notification("Login successful! Token saved to phone.") 
             else:
-                # Failure Pop-up! If you see this, we know exactly what the bug is.
                 show_notification("BUG: Session is None! Token was not saved.")
-            
-            page.controls.clear()
-            page.add(manage_view)
-            page.update()
         else:
             show_notification(f"Login Failed: {msg}")
 
@@ -436,8 +405,26 @@ def main(page: ft.Page):
         
         update_dashboard()
 
-    # --- START THE APP ON THE LOGIN SCREEN ---
-    page.add(login_view)
+    # --- THE STARTUP CHECK (Moved to the bottom!) ---
+    saved_token = page.client_storage.get("tabit_refresh_token")
+    
+    if saved_token:
+        try:
+            # FIX 3: Ask the tracker to refresh the session
+            response = tracker.supabase.auth.refresh_session(saved_token)
+            page.client_storage.set("tabit_refresh_token", response.session.refresh_token)
+            
+            show_dashboard() # FIX 4: Load the full tabbed dashboard!
+            show_notification("Silently logged in!")
+            
+        except Exception as err:
+            page.client_storage.remove("tabit_refresh_token")
+            page.add(login_view)
+            show_notification("Session expired. Please log in again.")
+    else:
+        page.add(login_view)
+        
+    page.update()
 
 if __name__ == "__main__":
     ft.run(main)

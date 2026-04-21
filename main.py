@@ -3,7 +3,6 @@ import datetime
 import calendar    # <--- Our new built-in math tool
 import flet as ft
 from supabase import create_client, Client
-from dotenv import load_dotenv
 
 # Load the hidden keys from the .env file
 load_dotenv()
